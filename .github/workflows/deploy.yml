@@ -52,45 +52,70 @@ jobs:
           docker push "$IMG"
           docker push "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:latest"
 
-      - name: Fetch secret ARNs from infra-db state
-        id: secrets
-        run: |
-          # Lê os outputs do state do infra-db pra preencher ConfigMap.
-          DB_ARN=$(aws s3 cp "s3://fiap-fase3-tfstate-${{ secrets.AWS_ACCOUNT_ID }}/infra-db/terraform.tfstate" - | jq -r '.outputs.db_secret_arn.value')
-          JWT_ARN=$(aws s3 cp "s3://fiap-fase3-tfstate-${{ secrets.AWS_ACCOUNT_ID }}/infra-db/terraform.tfstate" - | jq -r '.outputs.jwt_secret_arn.value')
-          [ -z "$DB_ARN" ] || [ "$DB_ARN" = "null" ] && { echo "::error::DB secret ARN não encontrado em infra-db state"; exit 1; }
-          [ -z "$JWT_ARN" ] || [ "$JWT_ARN" = "null" ] && { echo "::error::JWT secret ARN não encontrado em infra-db state"; exit 1; }
-          echo "db_arn=$DB_ARN" >> $GITHUB_OUTPUT
-          echo "jwt_arn=$JWT_ARN" >> $GITHUB_OUTPUT
-          echo "DB secret: $DB_ARN"
-          echo "JWT secret: $JWT_ARN"
-
       - name: Configure kubectl
         run: |
           aws eks update-kubeconfig --name "${{ env.CLUSTER_NAME }}" --region "${{ env.AWS_REGION }}"
+
+      - name: Resolve secret ARNs from infra-db state
+        id: secret_arns
+        run: |
+          STATE_URI="s3://fiap-fase3-tfstate-${{ secrets.AWS_ACCOUNT_ID }}/infra-db/terraform.tfstate"
+          DB_ARN=$(aws s3 cp "$STATE_URI" - | jq -r '.outputs.db_secret_arn.value')
+          JWT_ARN=$(aws s3 cp "$STATE_URI" - | jq -r '.outputs.jwt_secret_arn.value')
+          [ "$DB_ARN" = "null" ] && { echo "::error::DB secret ARN not found"; exit 1; }
+          [ "$JWT_ARN" = "null" ] && { echo "::error::JWT secret ARN not found"; exit 1; }
+          echo "db_arn=$DB_ARN" >> $GITHUB_OUTPUT
+          echo "jwt_arn=$JWT_ARN" >> $GITHUB_OUTPUT
+
+      - name: Sync Secrets Manager values into K8s Secret
+        run: |
+          # LabEksNodeRole não tem permissão para Secrets Manager, então em vez
+          # de buscar em runtime, lemos no CI (que tem credenciais STS) e
+          # gravamos como Secret K8s. Pods consomem via envFrom.
+          kubectl create namespace oficina --dry-run=client -o yaml | kubectl apply -f -
+
+          DB_JSON=$(aws secretsmanager get-secret-value --secret-id "${{ steps.secret_arns.outputs.db_arn }}" --query SecretString --output text)
+          JWT_VAL=$(aws secretsmanager get-secret-value --secret-id "${{ steps.secret_arns.outputs.jwt_arn }}" --query SecretString --output text)
+
+          DB_HOST=$(echo "$DB_JSON" | jq -r .host)
+          DB_PORT=$(echo "$DB_JSON" | jq -r .port)
+          DB_USERNAME=$(echo "$DB_JSON" | jq -r .username)
+          DB_PASSWORD=$(echo "$DB_JSON" | jq -r .password)
+          DB_DATABASE=$(echo "$DB_JSON" | jq -r .dbname)
+
+          kubectl create secret generic api-secret -n oficina \
+            --from-literal=DB_HOST="$DB_HOST" \
+            --from-literal=DB_PORT="$DB_PORT" \
+            --from-literal=DB_USERNAME="$DB_USERNAME" \
+            --from-literal=DB_PASSWORD="$DB_PASSWORD" \
+            --from-literal=DB_DATABASE="$DB_DATABASE" \
+            --from-literal=JWT_SECRET="$JWT_VAL" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Render and apply K8s manifests
         run: |
           IMG="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ github.sha }}"
           SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-8)
-          DB_ARN="${{ steps.secrets.outputs.db_arn }}"
-          JWT_ARN="${{ steps.secrets.outputs.jwt_arn }}"
 
-          # Substituições por arquivo (não usar sed -i recursivo pra evitar surpresas)
           for f in k8s/*.yaml; do
             sed -e "s|__IMAGE__|$IMG|g" \
                 -e "s|__SHA__|$SHA_SHORT|g" \
-                -e "s|__DB_SECRET_ARN__|$DB_ARN|g" \
-                -e "s|__JWT_SECRET_ARN__|$JWT_ARN|g" \
                 -e "s|__FRONTEND_URL__|https://placeholder.example.com|g" \
                 "$f" > "$f.rendered"
           done
 
           kubectl apply -f k8s/namespace.yaml.rendered
           kubectl apply -f k8s/configmap.yaml.rendered
+
+          # Migration job: deleta anterior se existir, aplica novo, espera completar
+          kubectl delete job api-migrations -n oficina --ignore-not-found=true
           kubectl apply -f k8s/migration-job.yaml.rendered
-          kubectl wait --for=condition=complete --timeout=180s job/api-migrations-$SHA_SHORT -n oficina || \
-            { kubectl logs -n oficina job/api-migrations-$SHA_SHORT; exit 1; }
+          kubectl wait --for=condition=complete --timeout=180s job/api-migrations -n oficina || {
+            echo "::error::Migration job failed; logs:"
+            kubectl logs -n oficina job/api-migrations --tail=200
+            exit 1
+          }
+
           kubectl apply -f k8s/service.yaml.rendered
           kubectl apply -f k8s/deployment.yaml.rendered
           kubectl apply -f k8s/hpa.yaml.rendered

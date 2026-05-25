@@ -1,17 +1,17 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: api-migrations-__SHA__
+  name: api-migrations
   namespace: oficina
   labels:
     app: api-migrations
     app.kubernetes.io/part-of: fiap-fase3
 spec:
-  backoffLimit: 3
+  backoffLimit: 2
   ttlSecondsAfterFinished: 600
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
         - name: migrate
           image: __IMAGE__
@@ -19,3 +19,5 @@ spec:
           envFrom:
             - configMapRef:
                 name: api-config
+            - secretRef:
+                name: api-secret

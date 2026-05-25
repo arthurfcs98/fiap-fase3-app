@@ -1,0 +1,105 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, homolog]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: fiap-fase3-app
+  CLUSTER_NAME: fiap-fase3-eks
+
+jobs:
+  deploy:
+    name: Build + Push ECR + Deploy EKS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Configure AWS credentials
+        run: |
+          aws configure set aws_access_key_id     "${{ secrets.AWS_ACCESS_KEY_ID }}"     --profile default
+          aws configure set aws_secret_access_key "${{ secrets.AWS_SECRET_ACCESS_KEY }}" --profile default
+          aws configure set aws_session_token     "${{ secrets.AWS_SESSION_TOKEN }}"    --profile default
+          aws configure set region                "${{ env.AWS_REGION }}"               --profile default
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region "${{ env.AWS_REGION }}" \
+            | docker login --username AWS --password-stdin "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+
+      - name: Build + Push image
+        run: |
+          IMG="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ github.sha }}"
+          docker build -t "$IMG" -t "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:latest" .
+          docker push "$IMG"
+          docker push "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:latest"
+
+      - name: Fetch secret ARNs from infra-db state
+        id: secrets
+        run: |
+          # Lê os outputs do state do infra-db pra preencher ConfigMap.
+          DB_ARN=$(aws s3 cp "s3://fiap-fase3-tfstate-${{ secrets.AWS_ACCOUNT_ID }}/infra-db/terraform.tfstate" - | jq -r '.outputs.db_secret_arn.value')
+          JWT_ARN=$(aws s3 cp "s3://fiap-fase3-tfstate-${{ secrets.AWS_ACCOUNT_ID }}/infra-db/terraform.tfstate" - | jq -r '.outputs.jwt_secret_arn.value')
+          [ -z "$DB_ARN" ] || [ "$DB_ARN" = "null" ] && { echo "::error::DB secret ARN não encontrado em infra-db state"; exit 1; }
+          [ -z "$JWT_ARN" ] || [ "$JWT_ARN" = "null" ] && { echo "::error::JWT secret ARN não encontrado em infra-db state"; exit 1; }
+          echo "db_arn=$DB_ARN" >> $GITHUB_OUTPUT
+          echo "jwt_arn=$JWT_ARN" >> $GITHUB_OUTPUT
+          echo "DB secret: $DB_ARN"
+          echo "JWT secret: $JWT_ARN"
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --name "${{ env.CLUSTER_NAME }}" --region "${{ env.AWS_REGION }}"
+
+      - name: Render and apply K8s manifests
+        run: |
+          IMG="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ github.sha }}"
+          SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-8)
+          DB_ARN="${{ steps.secrets.outputs.db_arn }}"
+          JWT_ARN="${{ steps.secrets.outputs.jwt_arn }}"
+
+          # Substituições por arquivo (não usar sed -i recursivo pra evitar surpresas)
+          for f in k8s/*.yaml; do
+            sed -e "s|__IMAGE__|$IMG|g" \
+                -e "s|__SHA__|$SHA_SHORT|g" \
+                -e "s|__DB_SECRET_ARN__|$DB_ARN|g" \
+                -e "s|__JWT_SECRET_ARN__|$JWT_ARN|g" \
+                -e "s|__FRONTEND_URL__|https://placeholder.example.com|g" \
+                "$f" > "$f.rendered"
+          done
+
+          kubectl apply -f k8s/namespace.yaml.rendered
+          kubectl apply -f k8s/configmap.yaml.rendered
+          kubectl apply -f k8s/migration-job.yaml.rendered
+          kubectl wait --for=condition=complete --timeout=180s job/api-migrations-$SHA_SHORT -n oficina || \
+            { kubectl logs -n oficina job/api-migrations-$SHA_SHORT; exit 1; }
+          kubectl apply -f k8s/service.yaml.rendered
+          kubectl apply -f k8s/deployment.yaml.rendered
+          kubectl apply -f k8s/hpa.yaml.rendered
+          kubectl apply -f k8s/ingress.yaml.rendered
+
+          kubectl rollout status deployment/api -n oficina --timeout=300s
+          echo
+          echo "=== Pods ==="
+          kubectl get pods -n oficina
+          echo
+          echo "=== Service / Ingress ==="
+          kubectl get svc,ingress -n oficina

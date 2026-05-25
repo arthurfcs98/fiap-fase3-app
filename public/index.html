@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oficina Mecânica - Acompanhe sua OS</title>
+  <link rel="stylesheet" href="/orders/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Oficina Mecânica</h1>
+      <p>Acompanhe sua Ordem de Serviço</p>
+    </header>
+
+    <!-- Access Form (shown when no valid token) -->
+    <div id="access-form" class="card">
+      <h2>Acesse sua OS</h2>
+      <p class="subtitle">Informe seu CPF/CNPJ e o número da Ordem de Serviço</p>
+      <form id="form-access">
+        <div class="form-group">
+          <label for="document">CPF ou CNPJ</label>
+          <input type="text" id="document" placeholder="000.000.000-00" required>
+        </div>
+        <div class="form-group">
+          <label for="orderNumber">Número da OS</label>
+          <input type="text" id="orderNumber" placeholder="OS-2024-00001" required>
+        </div>
+        <div id="form-error" class="error-message" style="display:none;"></div>
+        <button type="submit" class="btn btn-primary">Acessar</button>
+      </form>
+    </div>
+
+    <!-- Order Details (shown when token is valid) -->
+    <div id="order-details" style="display:none;">
+      <div class="card">
+        <div class="order-header">
+          <div>
+            <h2 id="os-number"></h2>
+            <span id="os-status" class="status-badge"></span>
+          </div>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="label">Veículo</span>
+            <span id="os-vehicle" class="value"></span>
+          </div>
+          <div class="info-item">
+            <span class="label">Placa</span>
+            <span id="os-plate" class="value"></span>
+          </div>
+          <div class="info-item">
+            <span class="label">Data de Abertura</span>
+            <span id="os-date" class="value"></span>
+          </div>
+          <div class="info-item">
+            <span class="label">Total</span>
+            <span id="os-total" class="value total"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Services -->
+      <div id="services-section" class="card" style="display:none;">
+        <h3>Serviços</h3>
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Serviço</th>
+              <th>Qtd</th>
+              <th>Valor Unit.</th>
+              <th>Subtotal</th>
+            </tr>
+          </thead>
+          <tbody id="services-list"></tbody>
+        </table>
+      </div>
+
+      <!-- Parts -->
+      <div id="parts-section" class="card" style="display:none;">
+        <h3>Peças</h3>
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Peça</th>
+              <th>Qtd</th>
+              <th>Valor Unit.</th>
+              <th>Subtotal</th>
+            </tr>
+          </thead>
+          <tbody id="parts-list"></tbody>
+        </table>
+      </div>
+
+      <!-- Approval Actions -->
+      <div id="approval-actions" class="card actions-card" style="display:none;">
+        <h3>Aprovação do Orçamento</h3>
+        <p>Deseja aprovar o orçamento desta ordem de serviço?</p>
+        <div class="actions">
+          <button id="btn-approve" class="btn btn-success">Aprovar Orçamento</button>
+          <button id="btn-reject" class="btn btn-danger">Rejeitar Orçamento</button>
+        </div>
+      </div>
+
+      <button id="btn-logout" class="btn btn-secondary btn-logout">Sair</button>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="loading" style="display:none;">
+      <div class="spinner"></div>
+      <p>Carregando...</p>
+    </div>
+  </div>
+
+  <script src="/orders/js/app.js"></script>
+</body>
+</html>

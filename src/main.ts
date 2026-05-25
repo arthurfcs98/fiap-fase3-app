@@ -1,3 +1,6 @@
+// OpenTelemetry deve ser o primeiro import pra capturar todas as
+// instrumentações (express, pg, http, dns).
+import './observability/otel';
 import { loadSecretsToEnv } from './shared/secrets/load-secrets';
 
 async function bootstrap() {
@@ -19,7 +22,9 @@ async function bootstrap() {
     './shared/observability/correlation-id.interceptor'
   );
 
-  const app = await NestFactory.create(AppModule);
+  const { Logger: PinoLogger } = await import('nestjs-pino');
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(PinoLogger));
 
   app.setGlobalPrefix('api');
 

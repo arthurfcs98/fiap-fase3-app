@@ -14,3 +14,4 @@ data:
   REDIS_PORT: "6379"
   FRONTEND_URL: __FRONTEND_URL__
   SKIP_SECRETS_LOADER: "true"
+  DB_SSL: "true"

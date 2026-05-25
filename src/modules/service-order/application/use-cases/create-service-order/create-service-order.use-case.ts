@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { IUseCase } from '@/shared/application';
+import { ordersCreatedCounter } from '@/observability/metrics';
 import { CustomerErrors, VehicleErrors, ServiceErrors, PartErrors } from '@/shared/domain/exceptions/errors';
 import {
   ICustomerRepository,
@@ -109,6 +110,11 @@ export class CreateServiceOrderUseCase
     const completeOrder = await this.serviceOrderRepository.findById(
       serviceOrder.id,
     );
+
+    ordersCreatedCounter.add(1, {
+      customerId: input.customerId,
+      vehicleId: input.vehicleId,
+    });
 
     return ServiceOrderMapper.toOutput(completeOrder!);
   }

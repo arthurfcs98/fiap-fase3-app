@@ -1,0 +1,45 @@
+# Dependencies (installed inside container)
+node_modules
+
+# Build artifacts
+dist
+
+# Test & Coverage
+coverage
+test
+
+# Version control
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment (secrets - injected via env vars)
+.env
+.env.local
+.env.test
+.env.*.local
+
+# Documentation (not needed in image)
+docs
+plans
+*.md
+!README.md
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Docker files (avoid recursive context)
+Dockerfile
+docker-compose*.yml
+.dockerignore

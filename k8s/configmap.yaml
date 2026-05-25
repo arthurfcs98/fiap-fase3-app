@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: oficina
+  labels:
+    app.kubernetes.io/part-of: fiap-fase3
+data:
+  NODE_ENV: production
+  PORT: "3000"
+  AWS_REGION: us-east-1
+  LOG_LEVEL: info
+  DB_SECRET_ARN: __DB_SECRET_ARN__
+  JWT_SECRET_ARN: __JWT_SECRET_ARN__
+  REDIS_HOST: redis-service
+  REDIS_PORT: "6379"
+  FRONTEND_URL: __FRONTEND_URL__

@@ -109,11 +109,11 @@ resource "aws_apigatewayv2_api" "main" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins = ["*"]
-    allow_methods = ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"]
-    allow_headers = ["content-type", "authorization", "x-correlation-id"]
+    allow_origins  = ["*"]
+    allow_methods  = ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"]
+    allow_headers  = ["content-type", "authorization", "x-correlation-id"]
     expose_headers = ["x-correlation-id"]
-    max_age = 86400
+    max_age        = 86400
   }
 }
 

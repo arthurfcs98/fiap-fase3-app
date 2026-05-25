@@ -1,0 +1,105 @@
+name: Gateway
+
+on:
+  push:
+    branches: [main, homolog]
+    paths:
+      - 'terraform/gateway/**'
+      - 'lambda-authorizer/**'
+      - '.github/workflows/gateway.yml'
+  pull_request:
+    paths:
+      - 'terraform/gateway/**'
+      - 'lambda-authorizer/**'
+      - '.github/workflows/gateway.yml'
+
+env:
+  AWS_REGION: us-east-1
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  build-authorizer:
+    name: Build Lambda Authorizer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install + build
+        working-directory: lambda-authorizer
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: authorizer-bundle
+          path: lambda-authorizer/dist/
+
+  plan:
+    name: Terraform plan
+    needs: build-authorizer
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/gateway
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: authorizer-bundle
+          path: lambda-authorizer/dist/
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        run: |
+          aws configure set aws_access_key_id     "${{ secrets.AWS_ACCESS_KEY_ID }}"     --profile default
+          aws configure set aws_secret_access_key "${{ secrets.AWS_SECRET_ACCESS_KEY }}" --profile default
+          aws configure set aws_session_token     "${{ secrets.AWS_SESSION_TOKEN }}"    --profile default
+          aws configure set region                "${{ env.AWS_REGION }}"               --profile default
+
+      - run: terraform fmt -check -recursive
+      - run: terraform init -no-color
+      - run: terraform validate -no-color
+      - run: terraform plan -no-color -input=false
+
+  apply:
+    name: Terraform apply
+    needs: plan
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/gateway
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: authorizer-bundle
+          path: lambda-authorizer/dist/
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        run: |
+          aws configure set aws_access_key_id     "${{ secrets.AWS_ACCESS_KEY_ID }}"     --profile default
+          aws configure set aws_secret_access_key "${{ secrets.AWS_SECRET_ACCESS_KEY }}" --profile default
+          aws configure set aws_session_token     "${{ secrets.AWS_SESSION_TOKEN }}"    --profile default
+          aws configure set region                "${{ env.AWS_REGION }}"               --profile default
+
+      - run: terraform init -no-color
+      - run: terraform apply -auto-approve -no-color -input=false
+      - name: Show outputs
+        run: terraform output -no-color

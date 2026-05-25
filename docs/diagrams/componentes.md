@@ -102,7 +102,7 @@ flowchart TB
 | Componente | Responsabilidade |
 |------------|-----------------|
 | Cliente / Operador | Acessa via app/curl; primeiro autentica com CPF, depois consome `/api/*` |
-| Cloudflare DNS | (Reusa zona `asdevit.com` da Fase 2; nesta fase, opcionalmente aponta subdomínio pro API Gateway domain customizado — opcional, pode usar `*.execute-api.amazonaws.com` direto) |
+| Cloudflare DNS | (Opcionalmente aponta um subdomínio próprio para o API Gateway domain custom; alternativa é usar `*.execute-api.amazonaws.com` direto) |
 
 ### Camada de Gateway
 | Componente | Responsabilidade |

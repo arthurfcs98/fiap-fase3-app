@@ -59,4 +59,4 @@ Rodar antes de qualquer push importante, sempre depois de novo `Start Lab`.
 
 - **OIDC + IAM role federada (best practice):** IAM Identity Provider creation bloqueado no Academy.
 - **AWS Vault tool no runner:** runner do GitHub Actions é efêmero — vault não persiste; ainda precisaria de credenciais base.
-- **Self-hosted runner na VM safira:** complexidade desnecessária; perderia ambiente isolado do GitHub.
+- **Self-hosted runner em VM própria:** complexidade desnecessária; perderia ambiente isolado do GitHub.

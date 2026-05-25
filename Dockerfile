@@ -62,5 +62,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/docs || exit 1
 
-# Start: run migrations first, then start the application
-CMD ["sh", "-c", "node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js && node dist/main"]
+# Start the application. Migrations run in a separate K8s Job
+# (dist/scripts/run-migrations.js) ahead of the deployment rollout —
+# see .github/workflows/deploy.yml.
+CMD ["node", "dist/main"]

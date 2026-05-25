@@ -20,6 +20,7 @@ async function run() {
     migrationsTableName: 'migrations',
     synchronize: false,
     logging: ['error', 'warn', 'migration'],
+    ssl: { rejectUnauthorized: false },
   });
 
   await dataSource.initialize();

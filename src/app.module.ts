@@ -24,7 +24,9 @@ import { HealthController } from './health.controller';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
-        const isTest = configService.get('NODE_ENV') === 'test';
+        const env = configService.get('NODE_ENV');
+        const isTest = env === 'test';
+        const isProd = env === 'production';
         return {
           type: 'postgres',
           host: configService.get('DB_HOST', 'localhost'),
@@ -34,9 +36,13 @@ import { HealthController } from './health.controller';
           database: configService.get('DB_DATABASE', 'oficina_mecanica'),
           entities: [__dirname + '/**/*.orm-entity{.ts,.js}'],
           migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
-          synchronize: isTest || configService.get('NODE_ENV') === 'development',
-          migrationsRun: configService.get('NODE_ENV') === 'production',
-          logging: !isTest && configService.get('NODE_ENV') === 'development',
+          synchronize: isTest || env === 'development',
+          // Migrations rodam em um Job K8s separado antes do deploy (run-migrations.ts).
+          // Manter false aqui pra evitar race condition entre múltiplos pods.
+          migrationsRun: false,
+          logging: !isTest && env === 'development',
+          // RDS rejects unencrypted connections; AWS-managed cert chain.
+          ssl: isProd ? { rejectUnauthorized: false } : false,
         };
       },
       inject: [ConfigService],

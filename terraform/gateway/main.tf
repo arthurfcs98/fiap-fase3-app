@@ -117,50 +117,23 @@ resource "aws_apigatewayv2_api" "main" {
   }
 }
 
-resource "aws_cloudwatch_log_group" "gateway" {
-  name              = "/aws/apigateway/fiap-fase3"
-  retention_in_days = 7
-}
+# NOTE: access_log_settings removed. API Gateway needs to create a
+# service-linked role to write to CloudWatch Logs; the AWS Academy
+# policy Pvoclabs2 denies that role creation, so the stage creation
+# fails with 'Insufficient permissions to enable logging'. We rely on
+# Lambda + NestJS pino logs for the request trail; the gateway side
+# is observable via the CloudWatch metrics it emits by default.
 
-# Stages: homolog e prod
 resource "aws_apigatewayv2_stage" "homolog" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "homolog"
   auto_deploy = true
-
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.gateway.arn
-    format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      requestTime    = "$context.requestTime"
-      httpMethod     = "$context.httpMethod"
-      routeKey       = "$context.routeKey"
-      status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
-    })
-  }
 }
 
 resource "aws_apigatewayv2_stage" "prod" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "prod"
   auto_deploy = true
-
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.gateway.arn
-    format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      requestTime    = "$context.requestTime"
-      httpMethod     = "$context.httpMethod"
-      routeKey       = "$context.routeKey"
-      status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
-    })
-  }
 }
 
 # ===========================================================================

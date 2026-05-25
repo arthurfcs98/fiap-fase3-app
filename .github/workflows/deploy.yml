@@ -67,6 +67,18 @@ jobs:
           echo "db_arn=$DB_ARN" >> $GITHUB_OUTPUT
           echo "jwt_arn=$JWT_ARN" >> $GITHUB_OUTPUT
 
+      - name: Resolve OTLP endpoint from infra-k8s state
+        id: otlp
+        run: |
+          STATE_URI="s3://fiap-fase3-tfstate-${{ secrets.AWS_ACCOUNT_ID }}/infra-k8s/terraform.tfstate"
+          OTLP=$(aws s3 cp "$STATE_URI" - | jq -r '.outputs.otlp_http_endpoint.value // ""')
+          if [ -z "$OTLP" ] || [ "$OTLP" = "null" ]; then
+            echo "::warning::OTLP endpoint not found in infra-k8s state — observability VM not deployed yet"
+            OTLP=""
+          fi
+          echo "endpoint=$OTLP" >> $GITHUB_OUTPUT
+          echo "OTLP endpoint: $OTLP"
+
       - name: Sync Secrets Manager values into K8s Secret
         run: |
           # LabEksNodeRole não tem permissão para Secrets Manager, então em vez
@@ -101,6 +113,7 @@ jobs:
             sed -e "s|__IMAGE__|$IMG|g" \
                 -e "s|__SHA__|$SHA_SHORT|g" \
                 -e "s|__FRONTEND_URL__|https://placeholder.example.com|g" \
+                -e "s|__OTLP_ENDPOINT__|${{ steps.otlp.outputs.endpoint }}|g" \
                 "$f" > "$f.rendered"
           done
 

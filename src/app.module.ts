@@ -26,7 +26,9 @@ import { HealthController } from './health.controller';
       useFactory: (configService: ConfigService) => {
         const env = configService.get('NODE_ENV');
         const isTest = env === 'test';
-        const isProd = env === 'production';
+        // SSL controlado por env var explicita (DB_SSL=true no ConfigMap K8s).
+        const sslEnabled =
+          String(configService.get('DB_SSL', 'false')).toLowerCase() === 'true';
         return {
           type: 'postgres',
           host: configService.get('DB_HOST', 'localhost'),
@@ -41,8 +43,7 @@ import { HealthController } from './health.controller';
           // Manter false aqui pra evitar race condition entre múltiplos pods.
           migrationsRun: false,
           logging: !isTest && env === 'development',
-          // RDS rejects unencrypted connections; AWS-managed cert chain.
-          ssl: isProd ? { rejectUnauthorized: false } : false,
+          ssl: sslEnabled ? { rejectUnauthorized: false } : false,
         };
       },
       inject: [ConfigService],

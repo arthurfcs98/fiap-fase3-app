@@ -161,35 +161,34 @@ resource "aws_lambda_permission" "auth_invoke" {
 }
 
 # ===========================================================================
-# Integração 2: API NestJS via VPC Link → NLB do NGINX
+# Integração 2: API NestJS via NLB internet-facing (sem VPC Link)
+#
+# Nota: a abordagem mais robusta seria usar VPC Link apontando para um NLB
+# interno (scheme=internal). No entanto, o AWS in-tree cloud controller no
+# EKS não permite alterar o scheme de um NLB existente (mesmo deletando e
+# recriando o Service, o NLB é reusado pelo nome). Para mudar pra internal
+# seria preciso recriar o Service do NGINX do zero ou usar AWS Load
+# Balancer Controller (LBC) — este exige IRSA, que o Academy bloqueia.
+#
+# Decisão: conectar API Gateway diretamente ao DNS público do NLB. O
+# tráfego sai da AWS e volta na mesma região (latência ~1ms, sem custo
+# de transferência). Aceitável para o escopo do projeto.
 # ===========================================================================
-resource "aws_security_group" "vpclink" {
-  name        = "fiap-fase3-vpclink-sg"
-  description = "VPC Link egress to NLB"
-  vpc_id      = data.terraform_remote_state.k8s.outputs.vpc_id
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_apigatewayv2_vpc_link" "main" {
-  name               = "fiap-fase3-vpclink"
-  subnet_ids         = data.terraform_remote_state.k8s.outputs.subnet_ids
-  security_group_ids = [aws_security_group.vpclink.id]
-}
-
 resource "aws_apigatewayv2_integration" "app_eks" {
   api_id                 = aws_apigatewayv2_api.main.id
   integration_type       = "HTTP_PROXY"
-  integration_uri        = data.aws_lb_listener.nginx_http.arn
+  integration_uri        = "http://${data.aws_lb.nginx.dns_name}"
   integration_method     = "ANY"
-  connection_type        = "VPC_LINK"
-  connection_id          = aws_apigatewayv2_vpc_link.main.id
+  connection_type        = "INTERNET"
   payload_format_version = "1.0"
+
+  # Sem este mapping, a integração HTTP_PROXY troca o path original
+  # por "/", fazendo o NGINX retornar 404. overwrite:path preserva
+  # o path da request original ($request.path = "/api/health",
+  # "/api/admin/customers", etc.).
+  request_parameters = {
+    "overwrite:path" = "$request.path"
+  }
 }
 
 # ===========================================================================

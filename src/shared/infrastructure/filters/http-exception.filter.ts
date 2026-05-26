@@ -4,15 +4,26 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { AppErrorException } from '@/shared/domain/exceptions/app-error.exception';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(GlobalExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
+    const request = ctx.getRequest<{ method?: string; url?: string }>();
     const response = ctx.getResponse<Response>();
+
+    // ALWAYS log the real exception, so 500s are debuggable.
+    const err = exception as { message?: string; name?: string; stack?: string };
+    this.logger.error(
+      `${request?.method ?? '?'} ${request?.url ?? '?'} — ${err?.name ?? 'Error'}: ${err?.message ?? exception}`,
+      err?.stack,
+    );
 
     // Handle AppErrorException (new structured errors)
     if (exception instanceof AppErrorException) {

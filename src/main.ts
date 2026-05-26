@@ -54,6 +54,19 @@ async function bootstrap() {
       'API para gestão de oficina mecânica. Autenticação via CPF (Lambda externa emite o JWT). Rotas protegidas exigem Bearer token.',
     )
     .setVersion('3.0')
+    // Server URLs incluem o stage do API Gateway (/prod, /homolog).
+    // O Nest internamente NÃO vê o prefix do stage (API GW remove antes
+    // do proxy), então sem isso o "Try it out" do Swagger gera URLs sem
+    // /prod e dá 404 no API Gateway.
+    .addServer(
+      process.env['PUBLIC_API_BASE_URL'] ||
+        'https://aopti5ygbj.execute-api.us-east-1.amazonaws.com/prod',
+      'prod',
+    )
+    .addServer(
+      'https://aopti5ygbj.execute-api.us-east-1.amazonaws.com/homolog',
+      'homolog',
+    )
     .addBearerAuth(
       {
         type: 'http',

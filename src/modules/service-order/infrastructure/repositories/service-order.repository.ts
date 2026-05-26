@@ -68,9 +68,12 @@ export class ServiceOrderRepository implements IServiceOrderRepository {
       });
     }
 
-    // Order by status priority (lower = higher priority), then oldest first
+    // Order by status priority (lower = higher priority), then oldest first.
+    // Register the CASE as a SELECT alias so TypeORM understands it in the
+    // ORDER BY clause when combined with leftJoinAndSelect (otherwise it
+    // raises 'alias not found' in getManyAndCount).
     queryBuilder
-      .orderBy(
+      .addSelect(
         `CASE so.status
           WHEN '${ServiceOrderStatus.IN_PROGRESS}' THEN 1
           WHEN '${ServiceOrderStatus.AWAITING_APPROVAL}' THEN 2
@@ -82,8 +85,9 @@ export class ServiceOrderRepository implements IServiceOrderRepository {
           WHEN '${ServiceOrderStatus.DELIVERED}' THEN 8
           ELSE 9
         END`,
-        'ASC',
+        'so_priority',
       )
+      .orderBy('so_priority', 'ASC')
       .addOrderBy('so.createdAt', 'ASC')
       .skip((page - 1) * limit)
       .take(limit);
